@@ -1,0 +1,16 @@
+{
+    "embed_dim": 512,
+    "num_filters": 128,
+    "filter_sizes": [3, 4, 5],
+    "max_length": 600,
+    "batch_size": 16,
+    "num_epochs": 5,
+    "learning_rate": 0.001,
+    "project_name": "textcnn",
+    "run_name": "fin_2classify",
+    "dataset_path": "/home/swh/quality_or_classify_data/{run_name}/test.jsonl",
+    "vocab_path": "/home/swh/text_classification/model_and_vocab_file/{run_name}_vocab_test.pth",
+    "model_path": "/home/swh/text_classification/model_and_vocab_file/{run_name}_textcnn_test.pth",
+    "result_save_path": "/home/swh/text_classification/model_and_vocab_file/{run_name}_result_test.txt"
+}
+    
