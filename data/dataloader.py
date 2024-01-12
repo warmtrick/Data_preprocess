@@ -1,12 +1,13 @@
 import torch
+import json
+import os
 import random
-from torch.utils.data import Dataset, Dataloader
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from.tokenizer import jieba_tokenizer
 
 def build_vocab_from_iterator(iterator, specials=('<pad>', '<unk>'), min_freq=1):
     vocab = {word: idx for idx, word in enumerate(specials)}
-    reverse_vocab = {idx: word for word, idx in vocab.items()}
     word_counts = {}
 
     for text in iterator:
@@ -17,11 +18,10 @@ def build_vocab_from_iterator(iterator, specials=('<pad>', '<unk>'), min_freq=1)
         if count >= min_freq and word not in vocab:
             idx = len(vocab)
             vocab[word] = idx
-            reverse_vocab[idx] = word
     
-    return vocab, reverse_vocab, word_counts
+    return vocab
 
-def load_data_and_build_vocab(data_path, max_length, tokenizer):
+def load_data_and_build_vocab(data_path, max_length, tokenizer, vocab_path):
     texts, labels = [],[]
     label_map = {}
     with open(data_path, 'r', encoding='utf-8') as file:
@@ -39,12 +39,14 @@ def load_data_and_build_vocab(data_path, max_length, tokenizer):
         vocab = torch.load(vocab_path)
     else:
         vocab_generator = (tokenizer(text) for text in tqdm(texts))
-        vocab, reverse_vocab, word_counts = build_vocab_from_iterator(vocab_generator)
-    
-    return texts, labels, vocab, reverse_vocab, word_counts, label_map
+        vocab = build_vocab_from_iterator(vocab_generator)
+        torch.save(vocab, vocab_path)
 
-def text_to_tensor(text, vocab, max_length)
-    tokens = [vocab[token, vocab['<unk>']] for token in tokenizer(text)]
+    num_classes = len(label_map)
+    return texts, labels, vocab, label_map, num_classes
+
+def text_to_tensor(text, vocab, max_length):
+    tokens = [vocab.get(token, vocab['<unk>']) for token in jieba_tokenizer(text)]
     if len(tokens) < max_length:
         tokens.extend([vocab['<pad>']] * (max_length - len(tokens)))
     else:
@@ -61,13 +63,13 @@ class TextClassificationDataset(Dataset):
     def __len__(self):
         return len(self.texts)
     
-    def__getitem__(self, idx):
-    text = text_to_tensor(self.texts[idx], self.vocab, self.max_length)
-    label = torch.tensor(self.labels[idx], dtype=torch.long)
-    return text, label
+    def __getitem__(self, idx):
+        text = text_to_tensor(self.texts[idx], self.vocab, self.max_length)
+        label = torch.tensor(self.labels[idx], dtype=torch.long)
+        return text, label
 
-def split_and_instantiate_dataset(texts, labels, vocab, max_length, train_ratio=0.9, 
-        val_ratio=0.05, test_ratio=0.05, random_seed=42):
+def split_and_instantiate_dataset(texts, labels, vocab, max_length, train_ratio=0.8, 
+        val_ratio=0.1, test_ratio=0.1, random_seed=42):
     random.seed(random_seed)
 
     total_samples = len(texts)
@@ -96,19 +98,18 @@ def split_and_instantiate_dataset(texts, labels, vocab, max_length, train_ratio=
         [labels[idx] for idx in test_indices],
         vocab, max_length)
 
-return train_dataset, val_dataset, test_dataset
+    return train_dataset, val_dataset, test_dataset
 
-def get_dataloaders(config):
+def create_dataloaders(config):
     tokenizer = jieba_tokenizer
-    texts, labels, vocab, label_map = load_data_and_build_vocab(config.get('dataset_path'), config.get('max_length'), tokenizer, config.get('vocab_path'))
-    torch.save(vocab, config.get('vocab_path'))
+    texts, labels, vocab, label_map, num_classes = load_data_and_build_vocab(config.get('dataset_path'), config.get('max_length'), tokenizer, config.get('vocab_path'))
 
-    train_dataset, val_dataset, test_dataset = split_and_instantiate_dataset(texts, labels, vocab, config.get('max_length'), 
-                                                                            config.get('train_ratio'), config.get('val_ratio'), 
-                                                                            config.get('test_ratio'), config.get('random_seed'))
+    train_dataset, val_dataset, test_dataset = split_and_instantiate_dataset(texts, labels, vocab, config.get('max_length'))
 
     train_dataloader = DataLoader(train_dataset, batch_size=config.get('batch_size'), shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=config.get('batch_size'), shuffle=True)
     test_dataloader = DataLoader(test_dataset, batch_size=config.get('batch_size'), shuffle=True)
 
-    return train_dataloader, val_dataloader, test_dataloader, label_map
+    vocab_size = len(vocab)
+
+    return train_dataloader, val_dataloader, test_dataloader, label_map, vocab_size, num_classes

@@ -19,11 +19,19 @@ class Config:
             if value is not None:
                 self.config[key] = value
     
+    def replace_project_name_placeholder(self):
+        run_name = self.config.get('run_name')
+        if run_name:
+            for key, value in self.config.items():
+                if isinstance(value, str) and '{run_name}' in value:
+                    # .format() 方法通常使用大括号 {} 来表示要替换的占位符，不需要{}包围变量名
+                    self.config[key] = value.format(run_name=run_name)
+
     def get(self, key, default=None):
         return self.config.get(key, default)
 
-    # def __str__(self):
-    #     return str(self.config)
+    def __str__(self):
+        return str(self.config)
     
     def get_config():
         parser = argparse.ArgumentParser()
@@ -37,6 +45,8 @@ class Config:
         parser.add_argument('--batch_size', type=int, help='Batch size')
         parser.add_argument('--num_epochs', type=int, help='Number of epochs')
         parser.add_argument('--learning_rate', type=float, help='Learning rate')
+        parser.add_argument('--project_name', type=str, help='Project name')
+        parser.add_argument('--run_name', type=str, help='Run name')
         parser.add_argument('--dataset_path', type=str, help='Path to the dataset')
         parser.add_argument('--vocab_path', type=str, help='Path to the vocabulary')
         parser.add_argument('--model_path', type=str, help='Path to the model')

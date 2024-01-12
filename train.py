@@ -7,7 +7,9 @@ from models.model import TextCNN
 from utils.config import Config
 from evaluate import evaluate_model
 
-def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs, device):
+def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_classes, num_epochs, device, result_save_path):
+    print('Training started')
+
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0.0
@@ -17,30 +19,38 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, labels.view(-1, 1).float())
+            print("模型输出：", outputs)
+            print("模型输出形状：", outputs.shape)
+            print("标签", labels)
+
+            if num_classes == 2:
+                # loss = criterion(outputs, labels.view(-1, 1).float())
+                print(outputs.squeeze())
+                print(labels.float())
+                loss = criterion(outputs.squeeze(), labels.float())  # 去除单维度
+            else:
+                loss = criterion(outputs, labels.long())  # CrossEntropyLoss 需要 long 类型的标签
+
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
             step = epoch * len(train_dataloader) + batch_idx
-            tb_writer.add_scalar('Loss/train', loss.item(), step)
             progress_bar.set_postfix({'Loss': f'{total_loss / (batch_idx + 1):.4f}'})
 
-        accuracy, precision, recall, f1 = evaluate_model(model, val_dataloader, criterion, device)
+        avg_loss, report, conf_matrix, accuracy = evaluate_model(model, val_dataloader, criterion, num_classes, device, result_save_path)
         print(f'Epoch {epoch+1}, Loss: {total_loss/len(train_dataloader)}')
 
     print('Training completed')
 
 if __name__ == "__main__":
-    config = Config('config.json')
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    criterion = nn.BCELoss()
+    config = Config.get_config()
+    config.replace_project_name_placeholder() # 替换配置文件中的占位符
+  
+    train_dataloader, val_dataloader, test_dataloader, label_map, vocab_size, num_classes = create_dataloaders(config)
 
-    texts, labels, vocab = load_data_and_build_vocab(config.dataset_path, jieba_tokenizer, config.max_length, config.vocab_path)
-    train_dataset, val_dataset, test_dataset = split_and_instantiate_dataset(texts, labels, vocab, config.max_length)
-    train_dataloader, val_dataloader, test_dataloader = create_dataloaders(train_dataset, val_dataset, test_dataset, config.batch_size)
+    model = TextCNN(vocab_size, config.get('embed_dim'), config.get('num_filters'), config.get('filter_sizes'), config.get('max_length'), num_classes).to(device)
+    criterion = nn.BCEWithLogitsLoss() if num_classes == 2 else nn.CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=config.get("learning_rate"))
 
-    model = TextCNN(len(vocab), config.embed_dim, config.num_filters, config.filter_sizes, config.max_length, config.num_classes).to(device)
-    optimizer = Adam(model.parameters(), lr=config.learning_rate)
-
-    train_model(model, train_dataloader, val_dataloader, criterion, optimizer, config.num_epochs, device)
+    train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_classes, config.get("num_epochs"), device, config.get("result_save_path"))
